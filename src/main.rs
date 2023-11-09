@@ -6,14 +6,14 @@
 
 use bsp::{
     entry,
-    hal::{gpio, rom_data::reset_to_usb_boot, spi::FrameFormat, usb::UsbBus, Clock, Sio, Timer},
+    hal::{gpio, rom_data::reset_to_usb_boot, spi::FrameFormat, usb::UsbBus, Sio, Timer},
 };
 use defmt::*;
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
 use embedded_hal::{spi::MODE_3, timer::CountDown};
-use fugit::{ExtU32, RateExtU32};
+use fugit::{ExtU32};
 use panic_probe as _;
 use usb_device::{
     class_prelude::UsbBusAllocator,

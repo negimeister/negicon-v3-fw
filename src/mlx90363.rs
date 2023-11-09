@@ -172,8 +172,8 @@ impl MlxFrame {
 }
 
 pub(crate) struct MlxStatus {
-    fwVersion: u8,
-    hwVersion: u8,
+    fw_version: u8,
+    hw_version: u8,
 }
 
 impl MlxStatus {
@@ -182,8 +182,8 @@ impl MlxStatus {
             Err("Invalid Ready packed magic")
         } else {
             Ok(Self {
-                fwVersion: message[1],
-                hwVersion: message[0],
+                fw_version: message[1],
+                hw_version: message[0],
             })
         }
     }
@@ -364,7 +364,7 @@ where
 
     pub(crate) fn get_alpha(&mut self) -> Result<MlxAlpha, &'static str> {
         let mut data: [u8; 8] = MlxGET1 {
-            resetCounter: false,
+            reset_counter: false,
             timeout: 0xffff,
             marker: MlxMarker::Alpha,
         }
@@ -386,7 +386,10 @@ where
             match self.transfer(&mut nop) {
                 Ok(_) => match MlxStatus::from_message(&nop) {
                     Ok(status) => {
-                        info!("Status: hw: {}, fw: {}", status.hwVersion, status.fwVersion);
+                        info!(
+                            "Status: hw: {}, fw: {}",
+                            status.hw_version, status.fw_version
+                        );
                     }
                     Err(_e) => match MlxNopResponse::verify(&nop, challenge) {
                         Ok(_) => {
@@ -407,7 +410,7 @@ where
             delay.delay_us(200);
         }
         let mut get1: [u8; 8] = MlxGET1 {
-            resetCounter: false,
+            reset_counter: false,
             timeout: 0xffff,
             marker: MlxMarker::Alpha,
         }

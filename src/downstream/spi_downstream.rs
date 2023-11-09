@@ -10,7 +10,9 @@ use rp_pico::hal::{
 
 use crate::negicon_event::NegiconEvent;
 
-use super::spi_protocol::{NopError, NopMessage, SpiError, NOP_REPLY_OPCODE_MLX};
+use super::spi_protocol::{
+    NopError, NopMessage, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP, NOP_REPLY_OPCODE_STM,
+};
 
 struct SpiDownstream<'a, P, D, T>
 where
@@ -63,11 +65,11 @@ where
         let challenge = 0x3939;
         self.cs.set_low().unwrap();
         let mut buf = NopMessage::new(challenge).serialize();
-        spi.transfer(&mut buf);
+        spi.transfer(&mut buf).unwrap();
         self.cs.set_high().unwrap();
         delay.delay_us(5);
         self.cs.set_low().unwrap();
-        spi.transfer(&mut buf);
+        spi.transfer(&mut buf).unwrap();
         self.cs.set_high().unwrap();
         let response = NopMessage::deserialize(&buf, challenge);
         match response {

@@ -1,4 +1,4 @@
-use core::ops::{Shl, Shr};
+use core::ops::{Shr};
 
 use super::util::make_u16;
 

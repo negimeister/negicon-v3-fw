@@ -3,7 +3,7 @@ use core::cmp::min;
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::spi::{SpiDevice, ValidSpiPinout};
 
-use crate::{mlx90363::Mlx90363, negicon_event::NegiconEvent};
+use crate::{mlx90363::Mlx90363};
 
 pub(crate) struct NegiconEncoder<P, T, U>
 where
