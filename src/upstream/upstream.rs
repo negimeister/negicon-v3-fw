@@ -3,7 +3,8 @@ use usb_device::class_prelude::UsbBus;
 use usbd_human_interface_device::interface::{InSize, Interface, OutSize, ReportCount};
 
 use crate::negicon_event::NegiconEvent;
-use crate::spi_upstream::SPIUpstream;
+
+use super::spi::SPIUpstream;
 pub(crate) trait Upstream {
     fn send_event(&mut self, event: &NegiconEvent) -> Result<(), &'static str>;
 }
