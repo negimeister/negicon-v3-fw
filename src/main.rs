@@ -11,6 +11,7 @@ use bsp::{
 use defmt::*;
 use defmt_rtt as _;
 
+use embedded_alloc::Heap;
 use embedded_hal::{spi::MODE_3, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
 use panic_probe as _;
@@ -33,12 +34,13 @@ use usbd_human_interface_device::{
 pub mod downstream;
 pub mod mlx90363;
 pub mod negicon_event;
-pub mod spi_upstream;
 pub mod upstream;
+use upstream::upstream::Upstream;
 
-use upstream::Upstream;
+use crate::{negicon_event::NegiconEvent, upstream::spi::SPIUpstream};
 
-use crate::{negicon_event::NegiconEvent, spi_upstream::SPIUpstream};
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
 
 const USB_HID_DESCRIPTOR: [u8; 38] = [
     0x05, 0x01, // USAGE_PAGE (Generic Desktop)
