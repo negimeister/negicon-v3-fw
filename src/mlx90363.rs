@@ -190,7 +190,7 @@ impl MlxStatus {
 }
 
 struct MlxGET1 {
-    resetCounter: bool,
+    reset_counter: bool,
     timeout: u16,
     marker: MlxMarker,
 }
@@ -199,7 +199,7 @@ impl MlxGET1 {
     fn encode(&self) -> [u8; 8] {
         let data: [u8; 8] = [
             0,
-            if self.resetCounter { 1 } else { 0 },
+            if self.reset_counter { 1 } else { 0 },
             self.timeout as u8,
             self.timeout.shr(8) as u8, //TODO check if timeout should be adjusted
             0,
