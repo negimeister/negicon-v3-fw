@@ -12,7 +12,7 @@
             // RP2040 doesn't support connectUnderReset
             "connectUnderReset": false,
             "speed": 4000,
-            "runtimeExecutable": "probe-rs",
+            "runtimeExecutable": "/home/ngmstr/.cargo/bin/probe-rs",
             "runtimeArgs": [
                 "dap-server"
             ],

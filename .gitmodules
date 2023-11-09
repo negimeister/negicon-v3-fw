@@ -1,0 +1,3 @@
+[submodule "lib/usbd-midi"]
+	path = lib/usbd-midi
+	url = git@github.com:btrepp/usbd-midi.git
