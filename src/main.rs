@@ -4,16 +4,31 @@
 #![no_std]
 #![no_main]
 
+use core::convert::Infallible;
+
 use bsp::{
     entry,
-    hal::{gpio, rom_data::reset_to_usb_boot, spi::FrameFormat, usb::UsbBus, Sio, Timer},
+    hal::{
+        clocks::ClocksManager,
+        gpio::{self, Pin, Pins},
+        rom_data::reset_to_usb_boot,
+        spi::{Enabled, FrameFormat, SpiDevice},
+        usb::UsbBus,
+        Clock, Sio, Spi, Timer,
+    },
+    pac::{Peripherals, SPI0},
 };
 use defmt::*;
 use defmt_rtt as _;
 
+use downstream::spi_downstream::DownstreamState;
 use embedded_alloc::Heap;
-use embedded_hal::{spi::MODE_3, timer::CountDown};
-use fugit::{ExtU32};
+use embedded_hal::{
+    digital::v2::OutputPin,
+    spi::{MODE_1, MODE_3},
+    timer::CountDown,
+};
+use fugit::{ExtU32, RateExtU32};
 use panic_probe as _;
 use usb_device::{
     class_prelude::UsbBusAllocator,
@@ -32,12 +47,15 @@ use usbd_human_interface_device::{
 };
 
 pub mod downstream;
-pub mod mlx90363;
+//pub mod mlx90363;
 pub mod negicon_event;
 pub mod upstream;
 use upstream::upstream::Upstream;
 
-use crate::{negicon_event::NegiconEvent, upstream::spi::SPIUpstream};
+use crate::{
+    downstream::spi_downstream::SpiDownstream, negicon_event::NegiconEvent,
+    upstream::spi::SPIUpstream,
+};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -87,7 +105,7 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
-    //let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+    let mut delay = cortex_m::delay::Delay::new(_core.SYST, clocks.system_clock.freq().to_Hz());
 
     let pins = bsp::Pins::new(
         pac.IO_BANK0,
@@ -133,7 +151,6 @@ fn main() -> ! {
     let mut i = 0u8;
 
     let mut buffer: [u8; 8] = [0u8; 8];
-
     let _spi_sclk = pins.gpio10.into_function::<gpio::FunctionSpi>();
     let _spi_mosi = pins.gpio11.into_function::<gpio::FunctionSpi>();
     let _spi_miso = pins.gpio12.into_function::<gpio::FunctionSpi>();
@@ -141,9 +158,26 @@ fn main() -> ! {
         .gpio13
         .into_push_pull_output_in_state(gpio::PinState::High);
 
-    let spi1 = bsp::hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
-        .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_3));
+    let mut spi1 = bsp::hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
+        .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
+
+    let _spi0_sclk = pins.gpio18.into_function::<gpio::FunctionSpi>();
+    let _spi0_mosi = pins.gpio19.into_function::<gpio::FunctionSpi>();
+    let _spi0_miso = pins.gpio20.into_function::<gpio::FunctionSpi>();
+    let mut spi0 = bsp::hal::Spi::new(pac.SPI0, (_spi0_mosi, _spi0_miso, _spi0_sclk)).init(
+        &mut pac.RESETS,
+        clocks.peripheral_clock.freq(),
+        2_500_000u32.Hz(),
+        &embedded_hal::spi::MODE_1,
+    );
+
     let mut spi_upstream = SPIUpstream::new(spi1);
+
+    let mut _spi0_cs0 = pins
+        .gpio0
+        .into_push_pull_output_in_state(gpio::PinState::High);
+
+    let mut downstreams = [SpiDownstream::new(&mut _spi0_cs0)];
 
     loop {
         usb_dev.poll(&mut [&mut hid]);
@@ -157,21 +191,40 @@ fn main() -> ! {
             Err(_) => {}
         }
 
-        if let Ok(_) = tick_timer.wait() {
-            let event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
-            let upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
-            for up in upstreams {
-                match up.send_event(&event) {
-                    Ok(_) => {}
-                    Err(e) => error!("Failed to send event: {:?}", e),
+        for ds in downstreams.iter_mut() {
+            match ds.device {
+                DownstreamState::Uninitialized => {
+                    match ds.detect(&mut delay, &mut spi0) {
+                        Ok(_) => debug!("found :)"),
+                        Err(_) => debug!("not found :("),
+                    };
                 }
+                DownstreamState::Initialized(_) => {
+                    debug!("hi");
+                    //poll ds
+                }
+            };
+        }
+
+        let event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
+        let upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
+        for up in upstreams {
+            match up.send_event(&event) {
+                Ok(_) => {}
+                Err(e) => error!("Failed to send event: {:?}", e),
             }
-            i = i.wrapping_add(1);
-            if i == 255 {
-                //    reset_to_usb_boot(0, 0);
+        }
+        i = i.wrapping_add(1);
+
+        loop {
+            match tick_timer.wait() {
+                Ok(_) => {
+                    tick_timer.start(5.millis());
+                    break;
+                }
+                Err(_) => {}
             }
-            tick_timer.start(10.millis());
-        };
+        }
 
         /*
         detect USB connection

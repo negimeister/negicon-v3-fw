@@ -1,4 +1,7 @@
-use core::ops::{Shl, Shr};
+use core::{
+    convert::Infallible,
+    ops::{Shl, Shr},
+};
 
 use cortex_m::delay::Delay;
 use defmt::{debug, error, info, warn, Format};
@@ -252,28 +255,11 @@ impl MlxNopResponse {
     }
 }
 
-pub(crate) struct Mlx90363<P, T, U>
-where
-    P: OutputPin,
-    T: SpiDevice,
-    U: ValidSpiPinout<T>,
-{
-    cs: P,
-    spi: Spi<Enabled, T, U, 8>,
-}
+pub(crate) struct Mlx90363 {}
 
-impl<P, T, U> Mlx90363<P, T, U>
-where
-    P: OutputPin,
-    T: SpiDevice,
-    U: ValidSpiPinout<T>,
-{
-    pub(crate) fn new(mut cs: P, spi: Spi<Enabled, T, U, 8>) -> Mlx90363<P, T, U> {
-        match cs.set_high() {
-            Ok(it) => it,
-            Err(_err) => panic!("pin on fire whatdafak"),
-        };
-        Mlx90363 { cs: cs, spi: spi }
+impl Mlx90363 {
+    pub(crate) fn new() -> Mlx90363 {
+        Mlx90363 {}
     }
 
     fn check_message(data: &[u8; 8]) -> Result<(), &'static str> {
@@ -340,25 +326,26 @@ where
         }
     }
 
-    fn transfer(&mut self, tx: &mut [u8; 8]) -> Result<(), &'static str> {
+    fn transfer<D>(
+        spi: &mut Spi<Enabled, D, impl ValidSpiPinout<D>, 8>,
+        cs: &mut dyn OutputPin<Error = Infallible>,
+        tx: &mut [u8; 8],
+    ) -> Result<(), &'static str>
+    where
+        D: SpiDevice,
+    {
         if tx.len() != 8 {
             panic!("tx.len must be 8");
         }
         Self::set_crc(tx);
-        match self.cs.set_low() {
-            Ok(it) => it,
-            Err(_err) => return Err("Pin on fire whatdafak"),
-        };
-        match self.spi.transfer(tx) {
+        cs.set_low();
+        match spi.transfer(tx) {
             Ok(_) => {}
             Err(_) => {
                 return Err("SPI error");
             }
         };
-        match self.cs.set_high() {
-            Ok(it) => it,
-            Err(_err) => return Err("Pin on fire whatdafak"),
-        };
+        cs.set_high();
         Self::check_message(tx)
     }
 

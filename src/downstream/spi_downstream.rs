@@ -1,4 +1,6 @@
 extern crate alloc;
+use core::convert::Infallible;
+
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
 use defmt::{debug, warn};
@@ -14,17 +16,17 @@ use super::spi_protocol::{
     NopError, NopMessage, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP, NOP_REPLY_OPCODE_STM,
 };
 
-struct SpiDownstream<'a, P, D, T>
+pub(crate) struct SpiDownstream<'a, P, D, T>
 where
     P: OutputPin,
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
 {
     cs: &'a mut P,
-    device: DownstreamState<D, T>,
+    pub(crate) device: DownstreamState<D, T>,
 }
 
-enum DownstreamState<D, T>
+pub(crate) enum DownstreamState<D, T>
 where
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
@@ -32,7 +34,7 @@ where
     Uninitialized,
     Initialized(Box<dyn DownstreamDevice<D, T>>),
 }
-trait DownstreamDevice<D, T>
+pub(crate) trait DownstreamDevice<D, T>
 where
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
@@ -42,18 +44,18 @@ where
 
 impl<'a, P, D, T> SpiDownstream<'a, P, D, T>
 where
-    P: OutputPin<Error = ()>,
+    P: OutputPin<Error = Infallible>,
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
 {
-    fn new(cs: &'a mut P) -> Self {
+    pub(crate) fn new(cs: &'a mut P) -> Self {
         Self {
             cs,
             device: DownstreamState::Uninitialized,
         }
     }
 
-    fn detect(
+    pub(crate) fn detect(
         &mut self,
         delay: &mut Delay,
         spi: &mut Spi<Enabled, D, T, 8>,
