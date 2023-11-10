@@ -1,6 +1,6 @@
 use core::ops::Shr;
 
-use embedded_hal::{blocking, prelude::_embedded_hal_blocking_spi_Transfer, spi};
+use embedded_hal::{blocking, prelude::_embedded_hal_blocking_spi_Transfer};
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,

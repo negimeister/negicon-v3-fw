@@ -4,7 +4,7 @@ use core::convert::Infallible;
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
 use defmt::{debug, warn};
-use embedded_hal::{digital::v2::OutputPin, prelude::_embedded_hal_blocking_spi_Transfer};
+use embedded_hal::{digital::v2::OutputPin};
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
     Spi,
