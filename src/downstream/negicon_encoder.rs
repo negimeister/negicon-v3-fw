@@ -3,34 +3,18 @@ use core::cmp::min;
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::spi::{SpiDevice, ValidSpiPinout};
 
-use crate::{mlx90363::Mlx90363};
+use crate::mlx90363::Mlx90363;
 
-pub(crate) struct NegiconEncoder<P, T, U>
-where
-    P: OutputPin,
-    U: ValidSpiPinout<T>,
-    T: SpiDevice,
-{
-    sensor: Mlx90363<P, T, U>,
+pub(crate) struct NegiconEncoder {
+    sensor: Mlx90363,
     min: u16,
     max: u16,
     last: u16,
     deadzone: u16,
 }
 
-impl<P, T, U> NegiconEncoder<P, T, U>
-where
-    P: OutputPin,
-    U: ValidSpiPinout<T>,
-    T: SpiDevice,
-{
-    pub(crate) fn new(
-        sensor: Mlx90363<P, T, U>,
-        min: u16,
-        max: u16,
-        last: u16,
-        deadzone: u16,
-    ) -> Self {
+impl NegiconEncoder {
+    pub(crate) fn new(sensor: Mlx90363, min: u16, max: u16, last: u16, deadzone: u16) -> Self {
         Self {
             sensor,
             min,
