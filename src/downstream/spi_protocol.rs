@@ -1,4 +1,10 @@
-use core::ops::{Shr};
+use core::ops::Shr;
+
+use embedded_hal::{blocking, prelude::_embedded_hal_blocking_spi_Transfer, spi};
+use rp_pico::hal::{
+    spi::{Enabled, SpiDevice, ValidSpiPinout},
+    Spi,
+};
 
 use super::util::make_u16;
 
@@ -24,12 +30,12 @@ const CBA_256_TAB: [u8; 256] = [
 
 pub(crate) enum SpiError {
     CrcError,
+    TxError,
     InvalidMessageLength,
     NopError(NopError),
 }
 pub(crate) enum NopError {
     InvalidOpcode(&'static str),
-    InvalidCrc(&'static str),
     InvalidChallenge(&'static str),
 }
 
@@ -66,6 +72,23 @@ fn verify_crc(data: &[u8]) -> Result<(), SpiError> {
 pub(crate) struct NopMessage {
     pub(crate) challenge: u16,
     pub(crate) opcode: u8,
+}
+
+pub(crate) trait NegiconProtocol: blocking::spi::Transfer<u8> {
+    fn verified_transmit(&mut self, data: &mut [u8]) -> Result<(), SpiError> {
+        set_crc(data);
+        match self.transfer(data) {
+            Ok(_) => verify_crc(data),
+            Err(_) => Err(SpiError::TxError),
+        }
+    }
+}
+
+impl<D, V> NegiconProtocol for Spi<Enabled, D, V, 8>
+where
+    D: SpiDevice,
+    V: ValidSpiPinout<D>,
+{
 }
 
 //TODO use 16-bit SPI

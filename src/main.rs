@@ -4,19 +4,17 @@
 #![no_std]
 #![no_main]
 
-use core::convert::Infallible;
+
 
 use bsp::{
     entry,
     hal::{
-        clocks::ClocksManager,
-        gpio::{self, Pin, Pins},
+        gpio::{self},
         rom_data::reset_to_usb_boot,
-        spi::{Enabled, FrameFormat, SpiDevice},
+        spi::{FrameFormat},
         usb::UsbBus,
-        Clock, Sio, Spi, Timer,
+        Clock, Sio, Timer,
     },
-    pac::{Peripherals, SPI0},
 };
 use defmt::*;
 use defmt_rtt as _;
@@ -24,8 +22,7 @@ use defmt_rtt as _;
 use downstream::spi_downstream::DownstreamState;
 use embedded_alloc::Heap;
 use embedded_hal::{
-    digital::v2::OutputPin,
-    spi::{MODE_1, MODE_3},
+    spi::{MODE_1},
     timer::CountDown,
 };
 use fugit::{ExtU32, RateExtU32};
@@ -158,7 +155,7 @@ fn main() -> ! {
         .gpio13
         .into_push_pull_output_in_state(gpio::PinState::High);
 
-    let mut spi1 = bsp::hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
+    let spi1 = bsp::hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
         .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
 
     let _spi0_sclk = pins.gpio18.into_function::<gpio::FunctionSpi>();
