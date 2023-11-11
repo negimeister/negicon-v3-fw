@@ -112,8 +112,6 @@ where
                 match e {
                     SpiError::TxError => debug!("TxError"),
                     SpiError::CrcError => debug!("CrcError"),
-                    SpiError::InvalidMessageLength => debug!("InvalidMessageLength"),
-                    SpiError::NopError(_) => debug!("NopError"),
                 };
                 return Ok(None);
             }

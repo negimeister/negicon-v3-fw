@@ -1,7 +1,7 @@
 use core::cmp::min;
 
-use embedded_hal::digital::v2::OutputPin;
-use rp_pico::hal::spi::{SpiDevice, ValidSpiPinout};
+
+
 
 use super::mlx90363::Mlx90363;
 

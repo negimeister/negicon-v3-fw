@@ -31,8 +31,6 @@ const CBA_256_TAB: [u8; 256] = [
 pub(crate) enum SpiError {
     CrcError,
     TxError,
-    InvalidMessageLength,
-    NopError(NopError),
 }
 pub(crate) enum NopError {
     InvalidOpcode(&'static str),

@@ -14,7 +14,7 @@ use bsp::{
         Clock, Sio, Timer,
     },
 };
-use defmt::{debug, error, info, panic as paaanic};
+use defmt::{debug, info};
 use defmt_rtt as _;
 
 use downstream::spi_downstream::DownstreamState;
@@ -203,8 +203,8 @@ fn main() -> ! {
                     };
                 }
 
-                let event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
-                let upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
+                let _event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
+                let _upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
                 //something's fucked here
                 /*for up in upstreams {
                     match up.send_event(&event) {
@@ -231,7 +231,6 @@ fn main() -> ! {
         }
         */
     }
-    error!("How tf did we end up here?");
 }
 
 // End of file
