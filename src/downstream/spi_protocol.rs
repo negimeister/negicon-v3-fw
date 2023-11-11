@@ -1,6 +1,6 @@
-use core::ops::Shr;
+use core::{convert::Infallible, ops::Shr};
 
-use embedded_hal::{blocking, prelude::_embedded_hal_blocking_spi_Transfer};
+use embedded_hal::{blocking, digital::v2::OutputPin};
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
@@ -75,9 +75,16 @@ pub(crate) struct NopMessage {
 }
 
 pub(crate) trait NegiconProtocol: blocking::spi::Transfer<u8> {
-    fn verified_transmit(&mut self, data: &mut [u8]) -> Result<(), SpiError> {
+    fn verified_transmit(
+        &mut self,
+        cs: &mut dyn OutputPin<Error = Infallible>,
+        data: &mut [u8],
+    ) -> Result<(), SpiError> {
+        cs.set_low().unwrap();
         set_crc(data);
-        match self.transfer(data) {
+        let res = self.transfer(data);
+        cs.set_high().unwrap();
+        match res {
             Ok(_) => verify_crc(data),
             Err(_) => Err(SpiError::TxError),
         }

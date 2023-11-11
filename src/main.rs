@@ -4,27 +4,22 @@
 #![no_std]
 #![no_main]
 
-
-
 use bsp::{
     entry,
     hal::{
         gpio::{self},
         rom_data::reset_to_usb_boot,
-        spi::{FrameFormat},
+        spi::FrameFormat,
         usb::UsbBus,
         Clock, Sio, Timer,
     },
 };
-use defmt::*;
+use defmt::{debug, error, info, panic as paaanic};
 use defmt_rtt as _;
 
 use downstream::spi_downstream::DownstreamState;
 use embedded_alloc::Heap;
-use embedded_hal::{
-    spi::{MODE_1},
-    timer::CountDown,
-};
+use embedded_hal::{spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
 use panic_probe as _;
 use usb_device::{
@@ -44,7 +39,6 @@ use usbd_human_interface_device::{
 };
 
 pub mod downstream;
-//pub mod mlx90363;
 pub mod negicon_event;
 pub mod upstream;
 use upstream::upstream::Upstream;
@@ -178,51 +172,50 @@ fn main() -> ! {
 
     loop {
         usb_dev.poll(&mut [&mut hid]);
-
-        match hid.device().read_report(&mut buffer) {
+        match tick_timer.wait() {
             Ok(_) => {
-                if buffer[0] == 0x39u8 {
-                    reset_to_usb_boot(0, 0);
+                tick_timer.start(5.millis());
+
+                match hid.device().read_report(&mut buffer) {
+                    Ok(_) => {
+                        if buffer[0] == 0x39u8 {
+                            reset_to_usb_boot(0, 0);
+                        }
+                    }
+                    Err(_) => {}
                 }
+
+                for ds in downstreams.iter_mut() {
+                    match ds.device {
+                        DownstreamState::Uninitialized => {
+                            match ds.poll(&mut delay, &mut spi0) {
+                                Ok(res) => match res {
+                                    Some(_) => debug!("found :)"),
+                                    None => debug!("not found :("),
+                                },
+                                Err(_) => debug!("not found :("),
+                            };
+                        }
+                        DownstreamState::Initialized(_) => {
+                            debug!("hi");
+                            //poll ds
+                        }
+                    };
+                }
+
+                let event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
+                let upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
+                //something's fucked here
+                /*for up in upstreams {
+                    match up.send_event(&event) {
+                        Ok(_) => {}
+                        Err(e) => error!("Failed to send event: {:?}", e),
+                    }
+                }*/
+                i = i.wrapping_add(1);
             }
             Err(_) => {}
         }
-
-        for ds in downstreams.iter_mut() {
-            match ds.device {
-                DownstreamState::Uninitialized => {
-                    match ds.detect(&mut delay, &mut spi0) {
-                        Ok(_) => debug!("found :)"),
-                        Err(_) => debug!("not found :("),
-                    };
-                }
-                DownstreamState::Initialized(_) => {
-                    debug!("hi");
-                    //poll ds
-                }
-            };
-        }
-
-        let event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
-        let upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
-        for up in upstreams {
-            match up.send_event(&event) {
-                Ok(_) => {}
-                Err(e) => error!("Failed to send event: {:?}", e),
-            }
-        }
-        i = i.wrapping_add(1);
-
-        loop {
-            match tick_timer.wait() {
-                Ok(_) => {
-                    tick_timer.start(5.millis());
-                    break;
-                }
-                Err(_) => {}
-            }
-        }
-
         /*
         detect USB connection
         detect upstream SPI
@@ -238,6 +231,7 @@ fn main() -> ! {
         }
         */
     }
+    error!("How tf did we end up here?");
 }
 
 // End of file
