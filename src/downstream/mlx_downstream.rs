@@ -1,13 +1,13 @@
-use core::{convert::Infallible, marker::PhantomData, ops::Shl};
+use core::{convert::Infallible};
 
-use alloc::boxed::Box;
+
 use defmt::debug;
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
-use usb_device::endpoint::In;
+
 
 use crate::{
     downstream::{mlx90363::MLXID_ADDR_LO, util::make_u32},
@@ -15,9 +15,8 @@ use crate::{
 };
 
 use super::{
-    mlx90363::{Mlx90363, MlxError, MlxReply, XReply, MLXID_ADDR_HI, MLXID_ADDR_MID},
-    spi_downstream::{DownstreamDevice, DownstreamError, SpiDownstream},
-    spi_protocol::NopMessage,
+    mlx90363::{Mlx90363, MlxReply, MLXID_ADDR_HI, MLXID_ADDR_MID},
+    spi_downstream::{DownstreamDevice, DownstreamError},
 };
 
 #[derive(PartialEq, Clone, Copy)]

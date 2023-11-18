@@ -1,5 +1,5 @@
 extern crate alloc;
-use core::{convert::Infallible, fmt::Error};
+use core::{convert::Infallible};
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
@@ -11,12 +11,12 @@ use rp_pico::hal::{
 };
 
 use crate::{
-    downstream::{mlx90363::Mlx90363, mlx_downstream::MlxDownstream},
+    downstream::{mlx_downstream::MlxDownstream},
     negicon_event::NegiconEvent,
 };
 
 use super::{
-    mlx90363::{MlxError, MlxReply},
+    mlx90363::{MlxError},
     spi_protocol::{
         NegiconProtocol, NopError, NopMessage, SpiError, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP,
         NOP_REPLY_OPCODE_STM,
@@ -85,7 +85,7 @@ where
 
     fn detect(
         &mut self,
-        delay: &mut Delay,
+        _delay: &mut Delay,
         spi: &mut Spi<Enabled, D, T, 8>,
     ) -> Result<Option<NegiconEvent>, DownstreamError>
     where
@@ -128,7 +128,7 @@ where
                 }
             },
             Err(e) => match e {
-                NopError::InvalidOpcode(m) => Err(DownstreamError::NopError(e)),
+                NopError::InvalidOpcode(_m) => Err(DownstreamError::NopError(e)),
                 NopError::InvalidChallenge(m) => {
                     warn!("Weird downstream behavior {}", m);
                     Err(DownstreamError::NopError(e))

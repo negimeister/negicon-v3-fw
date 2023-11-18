@@ -1,13 +1,13 @@
 use core::{convert::Infallible, ops::Shr};
 
-use defmt::{debug, Format};
+use defmt::{Format};
 use embedded_hal::{blocking, digital::v2::OutputPin};
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
 
-use super::{mlx90363::MlxAlpha, util::make_u16};
+use super::{util::make_u16};
 
 const NOP_COMMAND_OPCODE: u8 = 0b11010000u8;
 const CBA_256_TAB: [u8; 256] = [

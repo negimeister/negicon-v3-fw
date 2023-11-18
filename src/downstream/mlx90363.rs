@@ -1,17 +1,15 @@
 use core::{
     convert::Infallible,
-    fmt::Error,
-    marker::PhantomData,
     ops::{Shl, Shr},
 };
 
-use defmt::{debug, info, Format};
+use defmt::{info, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
-use usb_device::endpoint::In;
+
 
 use super::{
     spi_protocol::{NegiconProtocol, NopError, NopMessage, SpiError},

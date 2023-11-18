@@ -17,7 +17,7 @@ use bsp::{
 use defmt::{debug, error, info};
 use defmt_rtt as _;
 
-use downstream::spi_downstream::DownstreamState;
+
 use embedded_alloc::Heap;
 use embedded_hal::{spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
@@ -44,7 +44,7 @@ pub mod upstream;
 use upstream::upstream::Upstream;
 
 use crate::{
-    downstream::spi_downstream::SpiDownstream, negicon_event::NegiconEvent,
+    downstream::spi_downstream::SpiDownstream,
     upstream::spi::SPIUpstream,
 };
 
@@ -145,7 +145,7 @@ fn main() -> ! {
         .serial_number("3939")
         .build();
 
-    let mut i = 0u8;
+    let _i = 0u8;
 
     let mut buffer: [u8; 8] = [0u8; 8];
     let _spi_sclk = pins.gpio10.into_function::<gpio::FunctionSpi>();
@@ -168,7 +168,7 @@ fn main() -> ! {
         &embedded_hal::spi::MODE_1,
     );
 
-    let mut spi_upstream = SPIUpstream::new(spi1);
+    let _spi_upstream = SPIUpstream::new(spi1);
 
     let mut _spi0_cs0 = pins
         .gpio0
