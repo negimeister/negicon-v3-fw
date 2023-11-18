@@ -1,12 +1,13 @@
 use core::{convert::Infallible, ops::Shr};
 
+use defmt::{debug, Format};
 use embedded_hal::{blocking, digital::v2::OutputPin};
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
 
-use super::util::make_u16;
+use super::{mlx90363::MlxAlpha, util::make_u16};
 
 const NOP_COMMAND_OPCODE: u8 = 0b11010000u8;
 const CBA_256_TAB: [u8; 256] = [
@@ -27,11 +28,13 @@ const CBA_256_TAB: [u8; 256] = [
     0x76, 0x59, 0x28, 0x07, 0xca, 0xe5, 0x94, 0xbb, 0x21, 0x0e, 0x7f, 0x50, 0x9d, 0xb2, 0xc3, 0xec,
     0xd8, 0xf7, 0x86, 0xa9, 0x64, 0x4b, 0x3a, 0x15, 0x8f, 0xa0, 0xd1, 0xfe, 0x33, 0x1c, 0x6d, 0x42,
 ];
-
+#[derive(Format)]
 pub(crate) enum SpiError {
     CrcError,
     TxError,
 }
+
+#[derive(Format)]
 pub(crate) enum NopError {
     InvalidOpcode(&'static str),
     InvalidChallenge(&'static str),
@@ -67,9 +70,11 @@ fn verify_crc(data: &[u8]) -> Result<(), SpiError> {
     }
 }
 
+#[derive(Format)]
 pub(crate) struct NopMessage {
     pub(crate) challenge: u16,
     pub(crate) opcode: u8,
+    pub(crate) inv: u16,
 }
 
 pub(crate) trait NegiconProtocol: blocking::spi::Transfer<u8> {
@@ -80,10 +85,14 @@ pub(crate) trait NegiconProtocol: blocking::spi::Transfer<u8> {
     ) -> Result<(), SpiError> {
         cs.set_low().unwrap();
         set_crc(data);
+        //debug!("Sending {:?}", data);
         let res = self.transfer(data);
         cs.set_high().unwrap();
         match res {
-            Ok(_) => verify_crc(data),
+            Ok(_) => {
+                //                debug!("Received {:?}", data);
+                verify_crc(data)
+            }
             Err(_) => Err(SpiError::TxError),
         }
     }
@@ -102,6 +111,7 @@ impl NopMessage {
         Self {
             challenge: challenge,
             opcode: NOP_COMMAND_OPCODE,
+            inv: !challenge,
         }
     }
 
@@ -120,26 +130,39 @@ impl NopMessage {
         buf
     }
 
-    pub(crate) fn deserialize(data: &[u8; 8], challenge: u16) -> Result<NopMessage, NopError> {
+    pub(crate) fn deserialize(data: &[u8; 8]) -> Result<NopMessage, NopError> {
         let echo = make_u16(data[3], data[2]);
         let inv = make_u16(data[5], data[4]);
-        if challenge != echo && challenge != !inv {
+        /*if challenge != echo && challenge != !inv {
             return Err(NopError::InvalidChallenge("Invalid echo"));
-        }
+        }*/
         match data[6] {
             NOP_REPLY_OPCODE_MLX => Ok(NopMessage {
-                challenge: challenge,
+                challenge: echo,
                 opcode: NOP_REPLY_OPCODE_MLX,
+                inv: inv,
             }),
             NOP_REPLY_OPCODE_STM => Ok(NopMessage {
-                challenge: challenge,
+                challenge: echo,
                 opcode: NOP_REPLY_OPCODE_STM,
+                inv: inv,
             }),
             NOP_REPLY_OPCODE_RP => Ok(NopMessage {
-                challenge: challenge,
+                challenge: echo,
                 opcode: NOP_REPLY_OPCODE_RP,
+                inv: inv,
             }),
             _ => Err(NopError::InvalidOpcode("Invalid Opcode")),
         }
+    }
+
+    pub(crate) fn verify(&self, challenge: u16) -> Result<(), NopError> {
+        if self.challenge != challenge {
+            return Err(NopError::InvalidChallenge("Invalid challenge"));
+        }
+        if self.inv != !challenge {
+            return Err(NopError::InvalidChallenge("Invalid inv"));
+        }
+        Ok(())
     }
 }

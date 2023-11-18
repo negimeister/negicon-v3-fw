@@ -1,10 +1,10 @@
 use core::ops::Shr;
 
 pub(crate) struct NegiconEvent {
-    id: u16,
-    value: i16,
-    controller_id: u8,
-    sequence: u8,
+    pub(crate) id: u16,
+    pub(crate) value: i16,
+    pub(crate) controller_id: u8,
+    pub(crate) sequence: u8,
 }
 
 impl NegiconEvent {

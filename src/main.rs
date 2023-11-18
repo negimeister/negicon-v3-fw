@@ -3,7 +3,7 @@
 //! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
 #![no_std]
 #![no_main]
-
+extern crate alloc;
 use bsp::{
     entry,
     hal::{
@@ -14,7 +14,7 @@ use bsp::{
         Clock, Sio, Timer,
     },
 };
-use defmt::{debug, info};
+use defmt::{debug, error, info};
 use defmt_rtt as _;
 
 use downstream::spi_downstream::DownstreamState;
@@ -78,6 +78,12 @@ const USB_HID_DESCRIPTOR: [u8; 38] = [
 #[entry]
 fn main() -> ! {
     info!("Program start");
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+    }
     let mut pac = pac::Peripherals::take().unwrap();
     let _core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
@@ -186,33 +192,24 @@ fn main() -> ! {
                 }
 
                 for ds in downstreams.iter_mut() {
-                    match ds.device {
-                        DownstreamState::Uninitialized => {
-                            match ds.poll(&mut delay, &mut spi0) {
-                                Ok(res) => match res {
-                                    Some(_) => debug!("found :)"),
-                                    None => debug!("not found :("),
-                                },
-                                Err(_) => debug!("not found :("),
-                            };
+                    match ds.poll(&mut delay, &mut spi0) {
+                        Ok(res) => {
+                            res.map(|e| {
+                                debug!("yay {} {}", e.sequence, e.value);
+                                let upstreams: [&mut dyn Upstream; 1] = [hid.device()];
+                                for up in upstreams {
+                                    match up.send_event(&e) {
+                                        Ok(_) => {}
+                                        Err(e) => error!("Failed to send event: {:?}", e),
+                                    }
+                                }
+                            });
                         }
-                        DownstreamState::Initialized(_) => {
-                            debug!("hi");
-                            //poll ds
+                        Err(e) => {
+                            debug!("Error: {:?}", e);
                         }
                     };
                 }
-
-                let _event = NegiconEvent::new(39u16, 1042i16, 0u8, i);
-                let _upstreams: [&mut dyn Upstream; 2] = [hid.device(), &mut spi_upstream];
-                //something's fucked here
-                /*for up in upstreams {
-                    match up.send_event(&event) {
-                        Ok(_) => {}
-                        Err(e) => error!("Failed to send event: {:?}", e),
-                    }
-                }*/
-                i = i.wrapping_add(1);
             }
             Err(_) => {}
         }

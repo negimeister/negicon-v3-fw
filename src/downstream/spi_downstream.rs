@@ -1,35 +1,42 @@
 extern crate alloc;
-use core::convert::Infallible;
+use core::{convert::Infallible, fmt::Error};
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
-use defmt::{debug, warn};
+use defmt::{debug, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
     Spi,
 };
 
-use crate::{downstream::mlx90363::Mlx90363, negicon_event::NegiconEvent};
-
-use super::spi_protocol::{
-    NegiconProtocol, NopError, NopMessage, SpiError, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP,
-    NOP_REPLY_OPCODE_STM,
+use crate::{
+    downstream::{mlx90363::Mlx90363, mlx_downstream::MlxDownstream},
+    negicon_event::NegiconEvent,
 };
 
+use super::{
+    mlx90363::{MlxError, MlxReply},
+    spi_protocol::{
+        NegiconProtocol, NopError, NopMessage, SpiError, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP,
+        NOP_REPLY_OPCODE_STM,
+    },
+};
+#[derive(Format)]
 pub(crate) enum DownstreamError {
     SpiError(SpiError),
     UnknownDevice(u8),
     NopError(NopError),
+    MlxError(MlxError),
+    UnexpectedReply,
 }
 
-pub(crate) struct SpiDownstream<'a, P, D, T>
+pub(crate) struct SpiDownstream<'a, D, T>
 where
-    P: OutputPin,
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
 {
-    cs: &'a mut P,
+    cs: &'a mut dyn OutputPin<Error = Infallible>,
     pub(crate) device: DownstreamState<D, T>,
 }
 
@@ -53,30 +60,12 @@ where
     ) -> Result<Option<NegiconEvent>, DownstreamError>;
 }
 
-impl<D, T> DownstreamDevice<D, T> for Mlx90363
+impl<'a, D, T> SpiDownstream<'a, D, T>
 where
     D: HalSpiDevice,
     T: ValidSpiPinout<D>,
 {
-    fn poll(
-        &mut self,
-        spi: &mut Spi<Enabled, D, T, 8>,
-        cs: &mut dyn OutputPin<Error = Infallible>,
-    ) -> Result<Option<NegiconEvent>, DownstreamError> {
-        match self.get_alpha(spi, cs) {
-            Ok(_) => todo!(),
-            Err(_) => todo!(),
-        }
-    }
-}
-
-impl<'a, P, D, T> SpiDownstream<'a, P, D, T>
-where
-    P: OutputPin<Error = Infallible>,
-    D: HalSpiDevice,
-    T: ValidSpiPinout<D>,
-{
-    pub(crate) fn new(cs: &'a mut P) -> Self {
+    pub(crate) fn new(cs: &'a mut dyn OutputPin<Error = Infallible>) -> Self {
         Self {
             cs,
             device: DownstreamState::Uninitialized,
@@ -108,52 +97,38 @@ where
         let res = spi.verified_transmit(self.cs, &mut buf);
         match res {
             Ok(_) => {}
-            Err(e) => {
-                match e {
-                    SpiError::TxError => debug!("TxError"),
-                    SpiError::CrcError => debug!("CrcError"),
-                };
+            Err(_) => {
+                debug!("No device detected");
                 return Ok(None);
             }
         };
-        buf = NopMessage::new(challenge).serialize();
-        delay.delay_us(120);
-        let res = spi.verified_transmit(self.cs, &mut buf);
-        match res {
-            Ok(_) => {}
-            Err(_) => return Ok(None),
-        };
-        let response = NopMessage::deserialize(&buf, challenge);
+        let response = NopMessage::deserialize(&buf);
+
         match response {
-            Ok(nop) => match nop.opcode {
-                NOP_REPLY_OPCODE_MLX => {
-                    debug!("MLX90363 detected");
-                    //TODO we should probably be reading the calibration data and directly construct an encoder or something
-                    let mut mlx = Box::new(Mlx90363::new());
-                    //TODO maybe we should handle actual SPI protocol errors
-                    let _ = mlx.get_alpha(spi, self.cs); //This will give an error but that's ok
-
-                    self.device = DownstreamState::Initialized(mlx);
-
-                    delay.delay_us(120);
-
-                    Ok(None)
+            Ok(nop) => match nop.verify(challenge) {
+                Ok(_) => match nop.opcode {
+                    NOP_REPLY_OPCODE_MLX => {
+                        debug!("MLX90363 detected");
+                        self.device = DownstreamState::Initialized(Box::new(MlxDownstream::new()));
+                        Ok(None)
+                    }
+                    NOP_REPLY_OPCODE_RP => {
+                        debug!("RP2040 detected");
+                        Ok(None)
+                    }
+                    NOP_REPLY_OPCODE_STM => {
+                        debug!("STM32 detected");
+                        Ok(None)
+                    }
+                    _ => Err(DownstreamError::UnknownDevice(nop.opcode)),
+                },
+                Err(e) => {
+                    warn!("Invalid challenge response: {:?}", e);
+                    return Ok(None);
                 }
-                NOP_REPLY_OPCODE_RP => {
-                    debug!("RP2040 detected");
-                    Ok(None)
-                }
-                NOP_REPLY_OPCODE_STM => {
-                    debug!("STM32 detected");
-                    Ok(None)
-                }
-                _ => Err(DownstreamError::UnknownDevice(nop.opcode)),
             },
             Err(e) => match e {
-                NopError::InvalidOpcode(m) => {
-                    warn!("Weird downstream behavior {}", m);
-                    Err(DownstreamError::NopError(e))
-                }
+                NopError::InvalidOpcode(m) => Err(DownstreamError::NopError(e)),
                 NopError::InvalidChallenge(m) => {
                     warn!("Weird downstream behavior {}", m);
                     Err(DownstreamError::NopError(e))
