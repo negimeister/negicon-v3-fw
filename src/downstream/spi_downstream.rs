@@ -1,11 +1,11 @@
 extern crate alloc;
-use core::{convert::Infallible};
+use core::convert::Infallible;
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
 use defmt::{debug, error, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
-use rp_pico::hal::{
+use rp2040_hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
     Spi,
 };

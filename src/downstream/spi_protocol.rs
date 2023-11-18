@@ -1,8 +1,8 @@
 use core::{convert::Infallible, ops::Shr};
 
-use defmt::{Format};
+use defmt::Format;
 use embedded_hal::{blocking, digital::v2::OutputPin};
-use rp_pico::hal::{
+use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };

@@ -1,5 +1,5 @@
 use embedded_hal::prelude::_embedded_hal_blocking_spi_Transfer;
-use rp_pico::hal::{
+use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };

@@ -3,14 +3,12 @@ use core::convert::Infallible;
 use cortex_m::delay;
 use defmt::{debug, info};
 use embedded_hal::digital::v2::OutputPin;
-use rp_pico::hal::{
+use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
 
-use crate::{
-    negicon_event::{NegiconEvent, NegiconEventType},
-};
+use crate::negicon_event::{NegiconEvent, NegiconEventType};
 
 use super::{
     mlx90363::{Mlx90363, MlxReply},
