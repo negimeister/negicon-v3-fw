@@ -1,5 +1,4 @@
-use core::{convert::Infallible};
-
+use core::convert::Infallible;
 
 use defmt::debug;
 use embedded_hal::digital::v2::OutputPin;
@@ -7,7 +6,6 @@ use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
-
 
 use crate::{
     downstream::{mlx90363::MLXID_ADDR_LO, util::make_u32},

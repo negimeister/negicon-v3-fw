@@ -17,7 +17,6 @@ use bsp::{
 use defmt::{debug, error, info};
 use defmt_rtt as _;
 
-
 use embedded_alloc::Heap;
 use embedded_hal::{spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
@@ -43,10 +42,7 @@ pub mod negicon_event;
 pub mod upstream;
 use upstream::upstream::Upstream;
 
-use crate::{
-    downstream::spi_downstream::SpiDownstream,
-    upstream::spi::SPIUpstream,
-};
+use crate::{downstream::spi_downstream::SpiDownstream, upstream::spi::SPIUpstream};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();

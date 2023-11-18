@@ -1,3 +1,4 @@
+use defmt::warn;
 use rp_pico::hal::spi::{SpiDevice, ValidSpiPinout};
 use usb_device::class_prelude::UsbBus;
 use usbd_human_interface_device::interface::{InSize, Interface, OutSize, ReportCount};
@@ -19,7 +20,16 @@ where
     fn send_event(&mut self, event: &NegiconEvent) -> Result<(), &'static str> {
         match self.write_report(&event.serialize()) {
             Ok(_) => Ok(()),
-            Err(_) => Err("USB Error"),
+            Err(e) => match e {
+                usb_device::UsbError::WouldBlock => Err("USB WouldBlock"),
+                usb_device::UsbError::ParseError => Err("USB ParseError"),
+                usb_device::UsbError::BufferOverflow => Err("USB BufferOverflow"),
+                usb_device::UsbError::EndpointOverflow => Err("USB EndpointOverflow"),
+                usb_device::UsbError::InvalidEndpoint => Err("USB InvalidEndpoint"),
+                usb_device::UsbError::InvalidState => Err("USB InvalidState"),
+                usb_device::UsbError::EndpointMemoryOverflow => Err("USB EndpointMemoryOverflow"),
+                usb_device::UsbError::Unsupported => Err("USB Unsupported"),
+            },
         }
     }
 }
