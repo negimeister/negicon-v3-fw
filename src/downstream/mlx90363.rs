@@ -1,15 +1,15 @@
 use core::{
     convert::Infallible,
-    ops::{Shl, Shr},
+    ops::{BitXor, Shl, Shr},
 };
 
-use defmt::{info, Format};
+use cortex_m::delay::Delay;
+use defmt::{error, info, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
-
 
 use super::{
     spi_protocol::{NegiconProtocol, NopError, NopMessage, SpiError},
@@ -19,6 +19,36 @@ use super::{
 pub(crate) const MLXID_ADDR_LO: u16 = 0x1012u16;
 pub(crate) const MLXID_ADDR_MID: u16 = 0x1014u16;
 pub(crate) const MLXID_ADDR_HI: u16 = 0x1016u16;
+
+const MEM_WRITE_KEYS: [u16; 32] = [
+    17485, 31053, 57190, 57724, 7899, 53543, 26763, 12528, 38105, 51302, 16209, 24847, 13134,
+    52339, 14530, 18350, 55636, 64477, 40905, 45498, 24411, 36677, 4213, 48843, 6368, 5907, 31384,
+    63325, 3562, 19816, 6995, 3147,
+];
+
+#[derive(Format)]
+enum MlxMemWriteStatus {
+    Success = 1,
+    EraseWriteFail = 2,
+    EepromCrcEraseWriteFail = 4,
+    KeyInvalid = 6,
+    ChallengeFail = 7,
+    OddAddress = 8,
+}
+
+impl MlxMemWriteStatus {
+    fn from_number(number: u8) -> Self {
+        match number {
+            1 => Self::Success,
+            2 => Self::EraseWriteFail,
+            4 => Self::EepromCrcEraseWriteFail,
+            6 => Self::KeyInvalid,
+            7 => Self::ChallengeFail,
+            8 => Self::OddAddress,
+            _ => panic!("Invalid status"),
+        }
+    }
+}
 
 pub(crate) trait MlxRequest {
     fn serialize(&self) -> [u8; 8];
@@ -47,6 +77,9 @@ pub(crate) enum MlxReply {
     Nop(NopMessage),
     MlxAlpha(MlxAlpha),
     MlxMemReadResponse(MlxMemReadResponse),
+    MlxMemWriteChallengeReply(u16),
+    MlxMemWriteReadAnswerReply(),
+    MlxMemWriteStatusReply(MlxMemWriteStatus),
     XReply(),
 }
 
@@ -79,7 +112,20 @@ impl MlxReply {
                 MlxOpcode::MemoryReadAnswer => Ok(MlxReply::MlxMemReadResponse(
                     MlxMemReadResponse::deserialize(&data),
                 )),
-                _ => Err(MlxError::FormatError),
+                MlxOpcode::EEWriteChallenge => Ok(MlxReply::MlxMemWriteChallengeReply(make_u16(
+                    data[3], data[2],
+                ))),
+                MlxOpcode::EEReadAnswer => Ok(MlxReply::MlxMemWriteReadAnswerReply()),
+                MlxOpcode::EEChallengeAns => Ok(MlxReply::MlxMemWriteStatusReply(
+                    MlxMemWriteStatus::from_number(data[0]),
+                )),
+                MlxOpcode::EEWriteStatus => Ok(MlxReply::MlxMemWriteStatusReply(
+                    MlxMemWriteStatus::from_number(data[0]),
+                )),
+                _ => {
+                    warn!("Unknown opcode: {:x}", opcode as u8);
+                    Err(MlxError::FormatError)
+                }
             },
         }
     }
@@ -119,11 +165,33 @@ pub enum MlxOpcode {
 impl MlxOpcode {
     fn from_number(number: u8) -> Self {
         match number {
-            0x2Cu8 => Self::ReadyMessage,
+            0x13u8 => Self::GET1,
+            0x14u8 => Self::GET2,
+            0x15u8 => Self::GET3,
+            0x2Du8 => Self::Get3Ready,
+            0x01u8 => Self::MemoryRead,
+            0x02u8 => Self::MemoryReadAnswer,
+            0x03u8 => Self::EEWrite,
+            0x04u8 => Self::EEWriteChallenge,
+            0x05u8 => Self::EEChallengeAns,
+            0x28u8 => Self::EEReadAnswer,
+            0x0Fu8 => Self::EEReadChallenge,
+            0x0Eu8 => Self::EEWriteStatus,
+            0x10u8 => Self::NOPChallenge,
+            0x11u8 => Self::ChallengeNOPMISOPacket,
+            0x16u8 => Self::DiagnosticDetails,
+            0x17u8 => Self::DiagnosticsAnswer,
+            0x18u8 => Self::OscCounterStart,
+            0x19u8 => Self::OscCounterStartAcknowledge,
+            0x1Au8 => Self::OscCounterStop,
+            0x1Bu8 => Self::OscCounterStopAckCounterValue,
+            0x2Fu8 => Self::Reboot,
+            0x31u8 => Self::Standby,
+            0x32u8 => Self::StandbyAck,
             0x3Du8 => Self::ErrorFrame,
             0x3Eu8 => Self::NothingToTransmit,
-            0x11u8 => Self::ChallengeNOPMISOPacket,
-            0x02u8 => Self::MemoryReadAnswer,
+            0x2Cu8 => Self::ReadyMessage,
+            0xFFu8 => Self::NotAnOpcode,
             _ => Self::NotAnOpcode,
         }
     }
@@ -304,6 +372,63 @@ impl MlxMemReadRequest {
     }
 }
 
+struct MlxMemWriteRequest {
+    addr: u8,
+    data: u16,
+}
+
+impl MlxRequest for MlxMemWriteRequest {
+    fn serialize(&self) -> [u8; 8] {
+        let key = MEM_WRITE_KEYS[(self.addr & 0x3e).shr(1) as usize];
+        [
+            0,
+            self.addr,
+            key as u8,
+            key.shr(8) as u8,
+            self.data as u8,
+            self.data.shr(8) as u8,
+            MlxMarker::Irregular.to_number() | MlxOpcode::EEWrite as u8,
+            0,
+        ]
+    }
+}
+
+struct MlxMemWriteChallengeRequest {}
+
+impl MlxRequest for MlxMemWriteChallengeRequest {
+    fn serialize(&self) -> [u8; 8] {
+        [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            MlxMarker::Irregular.to_number() | MlxOpcode::EEReadChallenge as u8,
+            0,
+        ]
+    }
+}
+
+struct MlxMemWriteChallengeSolutionRequest {
+    value: u16,
+}
+
+impl MlxRequest for MlxMemWriteChallengeSolutionRequest {
+    fn serialize(&self) -> [u8; 8] {
+        [
+            0,
+            0,
+            (self.value as u8).bitxor(0x34),
+            (self.value.shr(8) as u8).bitxor(0x12),
+            (!self.value as u8).bitxor(0x34),
+            !(self.value.shr(8) as u8).bitxor(0x12),
+            MlxMarker::Irregular.to_number() | MlxOpcode::EEChallengeAns as u8,
+            0,
+        ]
+    }
+}
+
 #[derive(Format)]
 pub(crate) struct MlxMemReadResponse {
     pub(crate) data0: u16,
@@ -320,51 +445,6 @@ impl MlxMemReadResponse {
 }
 
 pub(crate) struct Mlx90363 {}
-
-/*trait MlxReadMem<R: MlxReply> {
-    fn read_memory<D: SpiDevice>(
-        spi: &mut Spi<Enabled, D, impl ValidSpiPinout<D>, 8>,
-        cs: &mut dyn OutputPin<Error = Infallible>,
-        3addr0: u16,
-        addr1: u16,
-    ) -> (R, Mlx90363<MlxMemReadResponse>) {
-    }
-}
-
-impl MlxReadMem<NopMessage> for Mlx90363<NopMessage> {}*/
-
-/*pub(crate) struct MlxStruct<R: MlxReply> {
-    phantom: PhantomData<R>,
-}*/
-
-//pub(crate) trait MlxTransmit<R: MlxReply> {}
-
-//impl<R: MlxReply> MlxTransmit<R> for MlxStruct<R> {}
-pub(crate) struct XReply {}
-
-/*impl MlxReply for XReply {
-    fn deserialize(data: &[u8; 8]) -> Result<Self, MlxError> {
-        Err(MlxError::FormatError)
-    }
-}*/
-
-/*impl MlxStruct<XReply> {
-    pub(crate) fn new() -> Self {
-        Self {
-            phantom: PhantomData,
-        }
-    }
-}*/
-
-//trait MlxBase<R: MlxReply, D: SpiDevice> {}
-
-//pub(crate) trait MlxNop<R: MlxReply>: MlxTransmit<R> {}
-
-/*impl MlxNop<NopMessage> for MlxStruct<NopMessage> {}
-impl MlxNop<MlxAlpha> for MlxStruct<MlxAlpha> {}
-impl MlxNop<XReply> for MlxStruct<XReply> {}*/
-
-//trait MlxGet1<R: MlxReply, D: SpiDevice>: MlxBase<R, D> {}
 
 impl Mlx90363 {
     pub(crate) fn nop<D: SpiDevice>(
@@ -443,6 +523,65 @@ impl Mlx90363 {
             marker: MlxMarker::Alpha,
         };
         Self::transfer(spi, cs, &req)
+    }
+
+    pub(crate) fn write_memory<D, T>(
+        spi: &mut Spi<Enabled, D, T, 8>,
+        cs: &mut (dyn OutputPin<Error = Infallible>),
+        delay: &mut Delay,
+        value: i16,
+        addr: u8,
+    ) where
+        D: SpiDevice,
+        T: ValidSpiPinout<D>,
+    {
+        delay.delay_us(150);
+        let _ = Self::nop(spi, cs, 0x3939);
+        delay.delay_us(150);
+        let _ = Self::transfer(
+            spi,
+            cs,
+            &MlxMemWriteRequest {
+                addr: addr,
+                data: value as u16,
+            },
+        );
+        delay.delay_us(150);
+        let challenge = Self::transfer(spi, cs, &MlxMemWriteChallengeRequest {});
+
+        let chal_answer = match challenge {
+            Ok(res) => match res {
+                MlxReply::MlxMemWriteChallengeReply(chal) => {
+                    let solution = MlxMemWriteChallengeSolutionRequest { value: chal };
+                    delay.delay_us(150);
+                    Self::transfer(spi, cs, &solution)
+                }
+                _ => {
+                    return error!(
+                        "Did not receive mem write challenge, got {}. Aborting write",
+                        res
+                    )
+                }
+            },
+            Err(e) => return error!("Got error {}. Aborting write", e),
+        };
+        match chal_answer {
+            Ok(res) => match res {
+                MlxReply::MlxMemWriteReadAnswerReply() => delay.delay_ms(33),
+                _ => return error!("Did not receive mem write challenge answer. Aborting write"),
+            },
+            Err(_) => return error!("Did not receive mem write challenge answer. Aborting write"),
+        };
+        let status = Self::nop(spi, cs, 0x3939);
+        match status {
+            Ok(s) => match s {
+                MlxReply::MlxMemWriteStatusReply(status) => {
+                    info!("Memory write completed with status: {:?}", status);
+                }
+                _ => error!("Failed to read status after mem write"),
+            },
+            Err(_) => error!("Failed to read status after mem write"),
+        }
     }
 }
 

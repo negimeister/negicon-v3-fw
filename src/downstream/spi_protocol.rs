@@ -7,7 +7,7 @@ use rp_pico::hal::{
     Spi,
 };
 
-use super::{util::make_u16};
+use super::util::make_u16;
 
 const NOP_COMMAND_OPCODE: u8 = 0b11010000u8;
 const CBA_256_TAB: [u8; 256] = [

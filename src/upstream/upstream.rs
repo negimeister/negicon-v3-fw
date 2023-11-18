@@ -1,4 +1,4 @@
-use defmt::warn;
+
 use rp_pico::hal::spi::{SpiDevice, ValidSpiPinout};
 use usb_device::class_prelude::UsbBus;
 use usbd_human_interface_device::interface::{InSize, Interface, OutSize, ReportCount};

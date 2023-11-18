@@ -3,20 +3,17 @@ use core::{convert::Infallible};
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
-use defmt::{debug, warn, Format};
+use defmt::{debug, error, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
     Spi,
 };
 
-use crate::{
-    downstream::{mlx_downstream::MlxDownstream},
-    negicon_event::NegiconEvent,
-};
+use crate::{downstream::mlx_downstream::MlxDownstream, negicon_event::NegiconEvent};
 
 use super::{
-    mlx90363::{MlxError},
+    mlx90363::MlxError,
     spi_protocol::{
         NegiconProtocol, NopError, NopMessage, SpiError, NOP_REPLY_OPCODE_MLX, NOP_REPLY_OPCODE_RP,
         NOP_REPLY_OPCODE_STM,
@@ -58,6 +55,16 @@ where
         spi: &mut Spi<Enabled, D, T, 8>,
         cs: &mut dyn OutputPin<Error = Infallible>,
     ) -> Result<Option<NegiconEvent>, DownstreamError>;
+
+    fn write_memory(
+        &mut self,
+        _spi: &mut Spi<Enabled, D, T, 8>,
+        _cs: &mut dyn OutputPin<Error = Infallible>,
+        _delay: &mut Delay,
+        _writeEvent: &NegiconEvent,
+    ) {
+        error!("Memory write target not implemented");
+    }
 }
 
 impl<'a, D, T> SpiDownstream<'a, D, T>
@@ -80,6 +87,22 @@ where
         match &mut self.device {
             DownstreamState::Uninitialized => self.detect(delay, spi),
             DownstreamState::Initialized(dev) => dev.as_mut().poll(spi, self.cs),
+        }
+    }
+
+    pub(crate) fn write_memory(
+        &mut self,
+        write_event: &NegiconEvent,
+        spi: &mut Spi<Enabled, D, T, 8>,
+        delay: &mut Delay,
+    ) {
+        match &mut self.device {
+            DownstreamState::Uninitialized => {
+                error!("Memory write target not inialized")
+            }
+            DownstreamState::Initialized(dev) => {
+                dev.as_mut().write_memory(spi, self.cs, delay, write_event)
+            }
         }
     }
 

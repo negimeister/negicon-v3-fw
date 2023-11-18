@@ -29,6 +29,10 @@ pub(crate) fn make_u16(upper: u8, lower: u8) -> u16 {
     lower as u16 | (upper as u16).shl(8)
 }
 
+pub(crate) fn make_i16(upper: u8, lower: u8) -> i16 {
+    make_u16(upper, lower) as i16
+}
+
 pub(crate) fn make_u32(words: [u16; 2]) -> u32 {
     words[1] as u32 | (words[0] as u32).shl(16)
 }

@@ -14,7 +14,7 @@ use bsp::{
         Clock, Sio, Timer,
     },
 };
-use defmt::{debug, error, info};
+use defmt::{debug, error, info, warn};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -42,7 +42,10 @@ pub mod negicon_event;
 pub mod upstream;
 use upstream::upstream::Upstream;
 
-use crate::{downstream::spi_downstream::SpiDownstream, upstream::spi::SPIUpstream};
+use crate::{
+    downstream::spi_downstream::SpiDownstream, negicon_event::NegiconEvent,
+    upstream::spi::SPIUpstream,
+};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -176,12 +179,24 @@ fn main() -> ! {
         usb_dev.poll(&mut [&mut hid]);
         match tick_timer.wait() {
             Ok(_) => {
-                tick_timer.start(5.millis());
+                tick_timer.start(10.millis());
 
                 match hid.device().read_report(&mut buffer) {
                     Ok(_) => {
-                        if buffer[0] == 0x39u8 {
-                            reset_to_usb_boot(0, 0);
+                        if buffer.len() == 8 {
+                            let event = NegiconEvent::deserialize(buffer);
+                            match event.event_type {
+                                negicon_event::NegiconEventType::Input => {
+                                    error!("Input event received from upstream")
+                                }
+                                negicon_event::NegiconEventType::Output => {
+                                    warn!("Output events are not implemented yet")
+                                }
+                                negicon_event::NegiconEventType::MemWrite => downstreams
+                                    [event.id as usize]
+                                    .write_memory(&event, &mut spi0, &mut delay),
+                                negicon_event::NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
+                            }
                         }
                     }
                     Err(_) => {}
@@ -191,7 +206,6 @@ fn main() -> ! {
                     match ds.poll(&mut delay, &mut spi0) {
                         Ok(res) => {
                             res.map(|e| {
-                                debug!("yay {} {}", e.sequence, e.value);
                                 let upstreams: [&mut dyn Upstream; 1] = [hid.device()];
                                 for up in upstreams {
                                     match up.send_event(&e) {

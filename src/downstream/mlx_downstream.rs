@@ -1,6 +1,7 @@
 use core::convert::Infallible;
 
-use defmt::debug;
+use cortex_m::delay;
+use defmt::{debug, info};
 use embedded_hal::digital::v2::OutputPin;
 use rp_pico::hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
@@ -8,12 +9,11 @@ use rp_pico::hal::{
 };
 
 use crate::{
-    downstream::{mlx90363::MLXID_ADDR_LO, util::make_u32},
-    negicon_event::NegiconEvent,
+    negicon_event::{NegiconEvent, NegiconEventType},
 };
 
 use super::{
-    mlx90363::{Mlx90363, MlxReply, MLXID_ADDR_HI, MLXID_ADDR_MID},
+    mlx90363::{Mlx90363, MlxReply},
     spi_downstream::{DownstreamDevice, DownstreamError},
 };
 
@@ -41,8 +41,7 @@ impl<T: Copy> ParameterState<T> {
 }
 
 pub(crate) struct MlxDownstream {
-    id_upper: ParameterState<u32>,
-    id_lower: ParameterState<u32>,
+    id: ParameterState<u16>,
     min: ParameterState<u16>,
     max: ParameterState<u16>,
     mode: ParameterState<InputMode>,
@@ -52,8 +51,7 @@ pub(crate) struct MlxDownstream {
 impl MlxDownstream {
     pub(crate) fn new() -> Self {
         Self {
-            id_upper: ParameterState::Uninitialized(0),
-            id_lower: ParameterState::Uninitialized(0),
+            id: ParameterState::Uninitialized(0),
             min: ParameterState::Initialized(0),
             max: ParameterState::Initialized(16383),
             mode: ParameterState::Initialized(InputMode::Absolute),
@@ -129,28 +127,14 @@ where
         spi: &mut Spi<Enabled, D, T, 8>,
         cs: &mut dyn OutputPin<Error = Infallible>,
     ) -> Result<Option<NegiconEvent>, DownstreamError> {
-        match self.id_upper {
+        match self.id {
             ParameterState::Initialized(_) => {}
             _ => {
-                self.id_upper = MlxDownstream::init_param(
-                    spi,
-                    cs,
-                    self.id_upper,
-                    [0u16, MLXID_ADDR_HI],
-                    |x| x[1] as u32,
-                )?;
-            }
-        }
-        match self.id_lower {
-            ParameterState::Initialized(_) => {}
-            _ => {
-                self.id_lower = MlxDownstream::init_param(
-                    spi,
-                    cs,
-                    self.id_lower,
-                    [MLXID_ADDR_MID, MLXID_ADDR_LO],
-                    make_u32,
-                )?;
+                self.id =
+                    MlxDownstream::init_param(spi, cs, self.id, [0x1018, 0x1018], |x| -> u16 {
+                        info!("Initialized MLX with ID {:x}", x[1]);
+                        x[1]
+                    })?;
             }
         }
         match Mlx90363::get_alpha(spi, cs) {
@@ -158,7 +142,8 @@ where
                 MlxReply::MlxAlpha(a) => {
                     if self.check_deadzone(a.data) {
                         Ok(Some(NegiconEvent::new(
-                            self.id_upper.get_value() as u16,
+                            NegiconEventType::Input,
+                            self.id.get_value() as u16,
                             self.calculate_output(a.data as i16),
                             0,
                             0,
@@ -199,6 +184,16 @@ where
             Ok(res) => Ok(Some(NegiconEvent::new(0, res.data as i16, 0, res.counter))),
             Err(e) => Err(DownstreamError::MlxError(e)),
         }*/
+    }
+
+    fn write_memory(
+        &mut self,
+        spi: &mut Spi<Enabled, D, T, 8>,
+        cs: &mut dyn OutputPin<Error = Infallible>,
+        delay: &mut delay::Delay,
+        write_event: &NegiconEvent,
+    ) {
+        Mlx90363::write_memory(spi, cs, delay, write_event.value, write_event.sequence);
     }
 }
 
