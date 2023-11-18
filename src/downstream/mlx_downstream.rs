@@ -46,6 +46,7 @@ pub(crate) struct MlxDownstream {
     min: ParameterState<u16>,
     max: ParameterState<u16>,
     mode: ParameterState<InputMode>,
+    last: u16,
 }
 
 impl MlxDownstream {
@@ -56,6 +57,7 @@ impl MlxDownstream {
             min: ParameterState::Initialized(0),
             max: ParameterState::Initialized(16383),
             mode: ParameterState::Initialized(InputMode::Absolute),
+            last: 0,
         }
     }
     fn init_param<R: Copy, D: SpiDevice, T: ValidSpiPinout<D>>(
@@ -91,7 +93,16 @@ impl MlxDownstream {
             ParameterState::Initialized(_) => Ok(param),
         }
     }
-
+    fn check_deadzone(&mut self, input: u16) -> bool {
+        let deadzone = 100;
+        let diff = input as i32 - self.last as i32;
+        if diff.abs() > deadzone {
+            self.last = input;
+            true
+        } else {
+            false
+        }
+    }
     fn calculate_output(&self, input: i16) -> i16 {
         match self.mode {
             ParameterState::Initialized(InputMode::Absolute) => {
@@ -145,13 +156,16 @@ where
         match Mlx90363::get_alpha(spi, cs) {
             Ok(res) => match res {
                 MlxReply::MlxAlpha(a) => {
-                    debug!("Got alpha {}", a);
-                    Ok(Some(NegiconEvent::new(
-                        self.id_upper.get_value() as u16,
-                        self.calculate_output(a.data as i16),
-                        0,
-                        0,
-                    )))
+                    if self.check_deadzone(a.data) {
+                        Ok(Some(NegiconEvent::new(
+                            self.id_upper.get_value() as u16,
+                            self.calculate_output(a.data as i16),
+                            0,
+                            0,
+                        )))
+                    } else {
+                        return Ok(None);
+                    }
                 }
                 _ => Ok(None),
             },
