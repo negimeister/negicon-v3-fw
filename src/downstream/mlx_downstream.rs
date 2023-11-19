@@ -106,28 +106,68 @@ impl MlxDownstream {
         }
     }
     fn check_deadzone(&mut self, input: u16) -> bool {
-        let deadzone = 100;
+        let deadzone = 64;
         let diff = input as i32 - self.last as i32;
         if diff.abs() > deadzone {
-            self.last = input;
             true
         } else {
             false
         }
     }
-    fn calculate_output(&self, input: i16) -> i16 {
+    fn calculate_output(&mut self, input: u16) -> i16 {
         match self.mode {
-            ParameterState::Initialized(InputMode::Absolute) => {
+            InputMode::Absolute => {
+                self.last = input;
                 let mut output = input as i32;
                 output -= self.min.get_value() as i32;
                 output *= 16383;
                 output /= (self.max.get_value() - self.min.get_value()) as i32;
                 output as i16
             }
-            ParameterState::Initialized(InputMode::Relative) => {
-                todo!()
+            InputMode::Relative => {
+                let last = self.last as i32;
+                let input = input as i32;
+                self.last = input as u16;
+
+                let mut diff = input - last;
+
+                if diff > 16384 / 2 {
+                    diff -= 16384;
+                } else if diff < -16384 / 2 {
+                    diff += 16384;
+                }
+                diff as i16
             }
-            _ => panic!("Mlx not initialized"),
+            _ => {
+                error!("Mlx not initialized");
+                i16::MIN
+            }
+        }
+    }
+
+    fn check_button(&mut self, vg: u8) -> Option<NegiconEvent> {
+        if (self.button_state == ButtonState::Up && vg < 35) {
+            self.lock_countdown = -1;
+            self.button_state = ButtonState::Down;
+            Some(NegiconEvent::new(
+                NegiconEventType::Input,
+                self.id.get_value() + 1 as u16,
+                1,
+                0,
+                0,
+            ))
+        } else if (self.button_state == ButtonState::Down && vg > 35) {
+            self.button_state = ButtonState::Up;
+            self.lock_countdown = 100;
+            Some(NegiconEvent::new(
+                NegiconEventType::Input,
+                self.id.get_value() + 1 as u16,
+                -1,
+                0,
+                0,
+            ))
+        } else {
+            None
         }
     }
 }
@@ -145,20 +185,73 @@ where
             ParameterState::Initialized(_) => {}
             _ => {
                 self.id =
-                    MlxDownstream::init_param(spi, cs, self.id, [0x1018, 0x1018], |x| -> u16 {
-                        info!("Initialized MLX with ID {:x}", x[1]);
+                    MlxDownstream::init_param(spi, cs, self.id, [ADDR_ID, ADDR_ID], |x| -> u16 {
                         x[1]
                     })?;
+                return Ok(None);
             }
+        }
+        match self.min {
+            ParameterState::Initialized(_) => {}
+            _ => {
+                self.min = MlxDownstream::init_param(
+                    spi,
+                    cs,
+                    self.min,
+                    [ADDR_MIN, ADDR_MIN],
+                    |x| -> u16 { x[1] },
+                )?;
+                return Ok(None);
+            }
+        }
+        match self.max {
+            ParameterState::Initialized(_) => {}
+            _ => {
+                self.max = MlxDownstream::init_param(
+                    spi,
+                    cs,
+                    self.max,
+                    [ADDR_MAX, ADDR_MAX],
+                    |x| -> u16 { x[1] },
+                )?;
+                if let ParameterState::Initialized(_) = self.max {
+                    info!("Initialized MLX Downstream {}", self)
+                }
+                return Ok(None);
+            }
+        }
+        if self.min.get_value() != 0 || self.max.get_value() != 0 {
+            //TODO fix absolute mode
+            //   self.mode = InputMode::Absolute;
+            self.mode = InputMode::Relative;
+        } else {
+            self.mode = InputMode::Relative;
         }
         match Mlx90363::get_alpha(spi, cs) {
             Ok(res) => match res {
                 MlxReply::MlxAlpha(a) => {
+                    match self.check_button(a.vg) {
+                        Some(event) => return Ok(Some(event)),
+                        None => {}
+                    }
+
+                    match self.lock_countdown {
+                        -1 => {
+                            self.last = a.data;
+                            return Ok(None);
+                        }
+                        0 => {}
+                        _ => {
+                            self.last = a.data;
+                            self.lock_countdown -= 1;
+                            return Ok(None);
+                        }
+                    }
                     if self.check_deadzone(a.data) {
                         Ok(Some(NegiconEvent::new(
                             NegiconEventType::Input,
                             self.id.get_value() as u16,
-                            self.calculate_output(a.data as i16),
+                            self.calculate_output(a.data),
                             0,
                             0,
                         )))
@@ -170,34 +263,6 @@ where
             },
             Err(e) => Err(DownstreamError::MlxError(e)),
         }
-        /*match self.min {
-                    ParameterState::Initialized(_) => {}
-                    _ => {
-                        self.min = MlxDownstream::init_param(spi, cs, self.min, [], make_u16)?;
-                    }
-                }
-                match self.max {
-                    ParameterState::Uninitialized => todo!(),
-                    ParameterState::Requested => todo!(),
-                    ParameterState::Initialized(_) => todo!(),
-                }
-                match self.mode {
-                    ParameterState::Uninitialized => todo!(),
-                    ParameterState::Requested => todo!(),
-                    ParameterState::Initialized(_) => todo!(),
-                }
-        */
-
-        //self.mlx.nop(spi, cs, 0x3939)
-        /*match self.mode {
-            Uninitialized => {
-                //Mlx90363::read_memory(spi, cs, MLXID_ADDR_HI, MLXID_ADDR_MID);
-            }
-        }*/
-        /*match self.sensor.get_alpha(spi, cs) {
-            Ok(res) => Ok(Some(NegiconEvent::new(0, res.data as i16, 0, res.counter))),
-            Err(e) => Err(DownstreamError::MlxError(e)),
-        }*/
     }
 
     fn write_memory(
