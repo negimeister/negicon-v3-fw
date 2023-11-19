@@ -4,7 +4,7 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use defmt::{debug, error, info, warn};
+use defmt::{error, info, warn};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -269,7 +269,7 @@ fn main() -> ! {
                                 }
                             });
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             //debug!("Error while polling: {:?}", e);
                         }
                     };

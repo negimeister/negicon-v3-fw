@@ -1,6 +1,6 @@
 use core::{convert::Infallible, ops::Shr};
 
-use defmt::{debug, Format};
+use defmt::{Format};
 use embedded_hal::{blocking, digital::v2::OutputPin};
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},

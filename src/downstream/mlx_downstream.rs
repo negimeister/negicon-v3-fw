@@ -146,7 +146,7 @@ impl MlxDownstream {
     }
 
     fn check_button(&mut self, vg: u8) -> Option<NegiconEvent> {
-        if (self.button_state == ButtonState::Up && vg < 35) {
+        if self.button_state == ButtonState::Up && vg < 35 {
             self.lock_countdown = -1;
             self.button_state = ButtonState::Down;
             Some(NegiconEvent::new(
@@ -156,7 +156,7 @@ impl MlxDownstream {
                 0,
                 0,
             ))
-        } else if (self.button_state == ButtonState::Down && vg > 35) {
+        } else if self.button_state == ButtonState::Down && vg > 35 {
             self.button_state = ButtonState::Up;
             self.lock_countdown = 100;
             Some(NegiconEvent::new(
