@@ -3,7 +3,7 @@ use core::convert::Infallible;
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
-use defmt::{debug, error, warn, Format};
+use defmt::{debug, error, info, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
@@ -86,7 +86,22 @@ where
     ) -> Result<Option<NegiconEvent>, DownstreamError> {
         match &mut self.device {
             DownstreamState::Uninitialized => self.detect(delay, spi),
-            DownstreamState::Initialized(dev) => dev.as_mut().poll(spi, self.cs),
+            DownstreamState::Initialized(dev) => match dev.as_mut().poll(spi, self.cs) {
+                Ok(event) => Ok(event),
+                Err(e) => match e {
+                    DownstreamError::SpiError(_) => {
+                        self.device = DownstreamState::Uninitialized;
+                        info!("SPI Error, removing downstream");
+                        Ok(None)
+                    }
+                    DownstreamError::MlxError(_) => {
+                        self.device = DownstreamState::Uninitialized;
+                        info!("MLX Error, removing downstream");
+                        Ok(None)
+                    }
+                    _ => Err(e),
+                },
+            },
         }
     }
 
@@ -96,12 +111,16 @@ where
         spi: &mut Spi<Enabled, D, T, 8>,
         delay: &mut Delay,
     ) {
+        info!(
+            "Downstream memory write request. Id: {}, Address: {:x}, Value: {:x}",
+            write_event.id, write_event.sequence, write_event.value
+        );
         match &mut self.device {
             DownstreamState::Uninitialized => {
                 error!("Memory write target not inialized")
             }
             DownstreamState::Initialized(dev) => {
-                dev.as_mut().write_memory(spi, self.cs, delay, write_event)
+                dev.as_mut().write_memory(spi, self.cs, delay, write_event);
             }
         }
     }
@@ -121,7 +140,6 @@ where
         match res {
             Ok(_) => {}
             Err(_) => {
-                debug!("No device detected");
                 return Ok(None);
             }
         };
@@ -131,16 +149,16 @@ where
             Ok(nop) => match nop.verify(challenge) {
                 Ok(_) => match nop.opcode {
                     NOP_REPLY_OPCODE_MLX => {
-                        debug!("MLX90363 detected");
+                        info!("MLX90363 detected");
                         self.device = DownstreamState::Initialized(Box::new(MlxDownstream::new()));
                         Ok(None)
                     }
                     NOP_REPLY_OPCODE_RP => {
-                        debug!("RP2040 detected");
+                        info!("RP2040 detected");
                         Ok(None)
                     }
                     NOP_REPLY_OPCODE_STM => {
-                        debug!("STM32 detected");
+                        info!("STM32 detected");
                         Ok(None)
                     }
                     _ => Err(DownstreamError::UnknownDevice(nop.opcode)),

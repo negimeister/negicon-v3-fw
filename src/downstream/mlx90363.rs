@@ -4,7 +4,7 @@ use core::{
 };
 
 use cortex_m::delay::Delay;
-use defmt::{error, info, warn, Format};
+use defmt::{debug, error, info, warn, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
@@ -535,9 +535,9 @@ impl Mlx90363 {
         D: SpiDevice,
         T: ValidSpiPinout<D>,
     {
-        delay.delay_us(150);
+        delay.delay_us(200);
         let _ = Self::nop(spi, cs, 0x3939);
-        delay.delay_us(150);
+        delay.delay_us(200);
         let _ = Self::transfer(
             spi,
             cs,
@@ -546,7 +546,7 @@ impl Mlx90363 {
                 data: value as u16,
             },
         );
-        delay.delay_us(150);
+        delay.delay_us(200);
         let challenge = Self::transfer(spi, cs, &MlxMemWriteChallengeRequest {});
 
         let chal_answer = match challenge {
@@ -567,12 +567,16 @@ impl Mlx90363 {
         };
         match chal_answer {
             Ok(res) => match res {
-                MlxReply::MlxMemWriteReadAnswerReply() => delay.delay_ms(33),
+                MlxReply::MlxMemWriteReadAnswerReply() => {
+                    debug!("waiting");
+                    delay.delay_ms(330)
+                }
                 _ => return error!("Did not receive mem write challenge answer. Aborting write"),
             },
             Err(_) => return error!("Did not receive mem write challenge answer. Aborting write"),
         };
         let status = Self::nop(spi, cs, 0x3939);
+        delay.delay_us(200);
         match status {
             Ok(s) => match s {
                 MlxReply::MlxMemWriteStatusReply(status) => {

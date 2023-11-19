@@ -1,7 +1,7 @@
 use core::convert::Infallible;
 
 use cortex_m::delay;
-use defmt::{debug, info};
+use defmt::{debug, error, info, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
@@ -15,20 +15,20 @@ use super::{
     spi_downstream::{DownstreamDevice, DownstreamError},
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Format)]
 enum InputMode {
     Absolute,
     Relative,
 }
 
-#[derive(PartialEq, Copy, Clone)]
-enum ParameterState<T: Copy> {
+#[derive(PartialEq, Copy, Clone, Format)]
+enum ParameterState<T: Copy + Format> {
     Uninitialized(T),
     Requested(T),
     Initialized(T),
 }
 
-impl<T: Copy> ParameterState<T> {
+impl<T: Copy + Format> ParameterState<T> {
     fn get_value(&self) -> T {
         match self {
             ParameterState::Uninitialized(value) => *value,
@@ -38,31 +38,47 @@ impl<T: Copy> ParameterState<T> {
     }
 }
 
+#[derive(PartialEq, Copy, Clone, Format)]
+enum ButtonState {
+    Up,
+    Down,
+}
+
+#[derive(Format)]
 pub(crate) struct MlxDownstream {
     id: ParameterState<u16>,
     min: ParameterState<u16>,
     max: ParameterState<u16>,
-    mode: ParameterState<InputMode>,
+    mode: InputMode,
     last: u16,
+    button_state: ButtonState,
+    lock_countdown: i16,
 }
+
+const ADDR_ID: u16 = 0x1018;
+const ADDR_MIN: u16 = 0x103A;
+const ADDR_MAX: u16 = 0x103C;
 
 impl MlxDownstream {
     pub(crate) fn new() -> Self {
         Self {
             id: ParameterState::Uninitialized(0),
-            min: ParameterState::Initialized(0),
-            max: ParameterState::Initialized(16383),
-            mode: ParameterState::Initialized(InputMode::Absolute),
+            min: ParameterState::Uninitialized(0),
+            max: ParameterState::Uninitialized(0),
+            mode: InputMode::Relative,
             last: 0,
+            button_state: ButtonState::Up,
+            lock_countdown: 100,
         }
     }
-    fn init_param<R: Copy, D: SpiDevice, T: ValidSpiPinout<D>>(
+    fn init_param<R: Copy + Format, D: SpiDevice, T: ValidSpiPinout<D>>(
         spi: &mut Spi<Enabled, D, T, 8>,
         cs: &mut dyn OutputPin<Error = Infallible>,
         param: ParameterState<R>,
         addresses: [u16; 2],
         transform: fn([u16; 2]) -> R,
     ) -> Result<ParameterState<R>, DownstreamError> {
+        debug!("Querying param {:x}", addresses[0]);
         match param {
             ParameterState::Uninitialized(default) => {
                 match Mlx90363::read_memory(spi, cs, addresses[0], addresses[1]) {

@@ -1,6 +1,6 @@
 use crate::downstream::util::{make_i16, make_u16};
 use core::ops::Shr;
-
+#[derive(Clone, Copy)]
 pub(crate) struct NegiconEvent {
     pub(crate) event_type: NegiconEventType,
     pub(crate) id: u16,

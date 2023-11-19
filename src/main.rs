@@ -22,6 +22,7 @@ use rp2040_hal as hal;
 
 use hal::{
     clocks::init_clocks_and_plls,
+    clocks::Clock,
     entry,
     gpio::{FunctionSpi, Pins},
     pac,
@@ -29,7 +30,7 @@ use hal::{
     spi::FrameFormat,
     usb::UsbBus,
     watchdog::Watchdog,
-    Clock, Sio, Timer,
+    Sio, Timer,
 };
 
 use usbd_human_interface_device::{
@@ -73,7 +74,9 @@ const USB_HID_DESCRIPTOR: [u8; 38] = [
     0xc0, //   END_COLLECTION
     0xc0, // END_COLLECTION
 ];
-
+#[link_section = ".boot2"]
+#[used]
+pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 #[entry]
 fn main() -> ! {
     info!("Program start");
@@ -217,7 +220,7 @@ fn main() -> ! {
         usb_dev.poll(&mut [&mut hid]);
         match tick_timer.wait() {
             Ok(_) => {
-                tick_timer.start(10.millis());
+                tick_timer.start(5.millis());
 
                 match hid.device().read_report(&mut buffer) {
                     Ok(_) => {
@@ -243,38 +246,37 @@ fn main() -> ! {
                 for ds in downstreams.iter_mut() {
                     match ds.poll(&mut delay, &mut spi0) {
                         Ok(res) => {
-                            res.map(|e| {
+                            res.map(|event| {
                                 let upstreams: [&mut dyn Upstream; 1] = [hid.device()];
                                 for up in upstreams {
-                                    match up.send_event(&e) {
+                                    match up.send_event(&event) {
                                         Ok(_) => {}
-                                        Err(e) => error!("Failed to send event: {:?}", e),
+                                        Err(e) => match e {
+                                            upstream::upstream::UpstreamError::SpiError => {
+                                                error!("SPI error")
+                                            }
+                                            upstream::upstream::UpstreamError::UsbError(e) => {
+                                                match e {
+                                                    usb_device::UsbError::WouldBlock => {
+                                                        //TODO enqueue event
+                                                        //error!("USB would block")
+                                                    }
+                                                    _ => error!("USB error {}", e),
+                                                }
+                                            }
+                                        },
                                     }
                                 }
                             });
                         }
                         Err(e) => {
-                            debug!("Error: {:?}", e);
+                            //debug!("Error while polling: {:?}", e);
                         }
                     };
                 }
             }
             Err(_) => {}
         }
-        /*
-        detect USB connection
-        detect upstream SPI
-        for CSpin {
-          if initialized {
-            poll(){
-                ok => forward upstream
-                error => initialized = false
-            }
-          }else{
-            initialized = detect()
-          }
-        }
-        */
     }
 }
 
