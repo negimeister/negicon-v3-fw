@@ -15,7 +15,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 # We're using a Pico by default on this template
 rp-pico = "0.8"
-usb-device = "0.2.9"
+usb-device = "0.3.1"
 ws2812-pio = "0.7.0"
 smart-leds = "0.3.0"
 usbd-human-interface-device = "0.4.3"
