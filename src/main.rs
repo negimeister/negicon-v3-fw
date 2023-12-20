@@ -4,7 +4,7 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use defmt::{error, info, warn};
+use defmt::{debug, info, warn};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -19,7 +19,6 @@ use usb_device::{
 // Uncomment the BSP you included in Cargo.toml, the rest of the code does not need to change.
 use rp2040_hal as hal;
 // use sparkfun_pro_micro_rp2040 as bsp;
-
 use hal::{
     clocks::init_clocks_and_plls,
     clocks::Clock,
@@ -41,11 +40,13 @@ use usbd_human_interface_device::{
 pub mod downstream;
 pub mod negicon_event;
 pub mod upstream;
-use upstream::upstream::Upstream;
 
 use crate::{
-    downstream::spi_downstream::SpiDownstream, negicon_event::NegiconEvent,
-    upstream::spi::SPIUpstream,
+    downstream::spi_downstream::SpiDownstream,
+    upstream::{
+        spi::SPIUpstream,
+        upstream::{Upstream, UsbUpstream},
+    },
 };
 
 #[global_allocator]
@@ -82,7 +83,7 @@ fn main() -> ! {
     info!("Program start");
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 1024;
+        const HEAP_SIZE: usize = 1024 * 64;
         static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -123,7 +124,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
 
-    let mut hid = UsbHidClassBuilder::new()
+    let hid = UsbHidClassBuilder::new()
         .add_device(
             InterfaceBuilder::<InBytes8, OutBytes8, ReportSingle>::new(&USB_HID_DESCRIPTOR)
                 .unwrap()
@@ -141,15 +142,14 @@ fn main() -> ! {
     let mut tick_timer = timer.count_down();
     tick_timer.start(1000.millis());
 
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x3939))
+    let usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x3939))
         .manufacturer("LeekLabs International")
         .product("Negicon v3")
         .serial_number("3939")
         .build();
-
+    let mut usb_upstream = UsbUpstream::new(hid, usb_dev);
     let _i = 0u8;
 
-    let mut buffer: [u8; 8] = [0u8; 8];
     let _spi_sclk = pins.gpio10.into_function::<FunctionSpi>();
     let _spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
     let _spi_miso = pins.gpio12.into_function::<FunctionSpi>();
@@ -216,61 +216,48 @@ fn main() -> ! {
         SpiDownstream::new(&mut cs20),
     ];
 
+    let mut upstreams = [Upstream::new(&mut usb_upstream)];
     loop {
-        usb_dev.poll(&mut [&mut hid]);
+        for up in upstreams.iter_mut() {
+            match up.receive() {
+                Ok(Some(event)) => {
+                    debug!("Received event from upstream {:?}", event.event_type);
+                    match event.event_type {
+                        negicon_event::NegiconEventType::Input => todo!(),
+                        negicon_event::NegiconEventType::Output => todo!(),
+                        negicon_event::NegiconEventType::MemWrite => todo!(),
+                        negicon_event::NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!("Error while polling: {:?}", e);
+                }
+            }
+        }
+
         match tick_timer.wait() {
             Ok(_) => {
                 tick_timer.start(5.millis());
-
-                match hid.device().read_report(&mut buffer) {
-                    Ok(_) => {
-                        if buffer.len() == 8 {
-                            let event = NegiconEvent::deserialize(buffer);
-                            match event.event_type {
-                                negicon_event::NegiconEventType::Input => {
-                                    error!("Input event received from upstream")
-                                }
-                                negicon_event::NegiconEventType::Output => {
-                                    warn!("Output events are not implemented yet")
-                                }
-                                negicon_event::NegiconEventType::MemWrite => downstreams
-                                    [event.id as usize]
-                                    .write_memory(&event, &mut spi0, &mut delay),
-                                negicon_event::NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
-                            }
-                        }
-                    }
-                    Err(_) => {}
-                }
-
                 for ds in downstreams.iter_mut() {
                     match ds.poll(&mut delay, &mut spi0) {
                         Ok(res) => {
                             res.map(|event| {
-                                let upstreams: [&mut dyn Upstream; 1] = [hid.device()];
-                                for up in upstreams {
-                                    match up.send_event(&event) {
+                                for up in upstreams.iter_mut() {
+                                    match up.enqueue(event) {
                                         Ok(_) => {}
-                                        Err(e) => match e {
-                                            upstream::upstream::UpstreamError::SpiError => {
-                                                error!("SPI error")
-                                            }
-                                            upstream::upstream::UpstreamError::UsbError(e) => {
-                                                match e {
-                                                    usb_device::UsbError::WouldBlock => {
-                                                        //TODO enqueue event
-                                                        //error!("USB would block")
-                                                    }
-                                                    _ => error!("USB error {}", e),
-                                                }
-                                            }
-                                        },
+                                        Err(e) => {
+                                            warn!(
+                                                "Error while enqueueing event for upstream: {:?}",
+                                                e
+                                            );
+                                        }
                                     }
                                 }
                             });
                         }
                         Err(_e) => {
-                            //debug!("Error while polling: {:?}", e);
+                            debug!("Error while polling downstream: {:?}", _e);
                         }
                     };
                 }

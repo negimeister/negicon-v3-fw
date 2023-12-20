@@ -61,7 +61,7 @@ where
         _spi: &mut Spi<Enabled, D, T, 8>,
         _cs: &mut dyn OutputPin<Error = Infallible>,
         _delay: &mut Delay,
-        _writeEvent: &NegiconEvent,
+        _write_event: &NegiconEvent,
     ) {
         error!("Memory write target not implemented");
     }

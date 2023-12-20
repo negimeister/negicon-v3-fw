@@ -1,7 +1,7 @@
 use core::convert::Infallible;
 
 use cortex_m::delay;
-use defmt::{debug, error, info, Format};
+use defmt::{debug, info, Format};
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
@@ -138,10 +138,6 @@ impl MlxDownstream {
                 }
                 diff as i16
             }
-            _ => {
-                error!("Mlx not initialized");
-                i16::MIN
-            }
         }
     }
 
@@ -221,9 +217,7 @@ where
             }
         }
         if self.min.get_value() != 0 || self.max.get_value() != 0 {
-            //TODO fix absolute mode
-            //   self.mode = InputMode::Absolute;
-            self.mode = InputMode::Relative;
+            self.mode = InputMode::Absolute;
         } else {
             self.mode = InputMode::Relative;
         }

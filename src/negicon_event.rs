@@ -1,3 +1,5 @@
+use defmt::Format;
+
 use crate::downstream::util::{make_i16, make_u16};
 use core::ops::Shr;
 #[derive(Clone, Copy)]
@@ -9,7 +11,7 @@ pub(crate) struct NegiconEvent {
     pub(crate) sequence: u8,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Format)]
 pub(crate) enum NegiconEventType {
     Input,
     Output,

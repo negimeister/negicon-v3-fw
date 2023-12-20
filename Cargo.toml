@@ -28,6 +28,8 @@ embedded-alloc = "0.5.1"
 # If you're not going to use a Board Support Package you'll need these:
  rp2040-hal = { version="0.9", features=["rt", "critical-section-impl"] }
  rp2040-boot2 = "0.3"
+usbd-picotool-reset = "0.2.0"
+frunk = { version = "0.4", default-features = false }
 
 # cargo build/run
 [profile.dev]

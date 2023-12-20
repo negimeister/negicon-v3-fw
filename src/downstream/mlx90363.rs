@@ -16,10 +16,6 @@ use super::{
     util::make_u16,
 };
 
-pub(crate) const MLXID_ADDR_LO: u16 = 0x1012u16;
-pub(crate) const MLXID_ADDR_MID: u16 = 0x1014u16;
-pub(crate) const MLXID_ADDR_HI: u16 = 0x1016u16;
-
 const MEM_WRITE_KEYS: [u16; 32] = [
     17485, 31053, 57190, 57724, 7899, 53543, 26763, 12528, 38105, 51302, 16209, 24847, 13134,
     52339, 14530, 18350, 55636, 64477, 40905, 45498, 24411, 36677, 4213, 48843, 6368, 5907, 31384,
@@ -27,7 +23,7 @@ const MEM_WRITE_KEYS: [u16; 32] = [
 ];
 
 #[derive(Format)]
-enum MlxMemWriteStatus {
+pub(crate) enum MlxMemWriteStatus {
     Success = 1,
     EraseWriteFail = 2,
     EepromCrcEraseWriteFail = 4,
@@ -453,36 +449,6 @@ impl Mlx90363 {
         challenge: u16,
     ) -> Result<MlxReply, MlxError> {
         Self::transfer(spi, cs, &NopMessage::new(challenge))
-    }
-
-    fn check_message(data: &[u8; 8]) -> Result<(), MlxError> {
-        let frame = MlxFrame::from_message(data);
-        match frame.marker {
-            MlxMarker::Alpha => Ok(()),
-            MlxMarker::AlphaBeta => todo!(),
-            MlxMarker::XYZ => todo!(),
-            MlxMarker::Irregular => match frame.opcode {
-                MlxOpcode::ReadyMessage => {
-                    info!("Ready message");
-                    Ok(())
-                }
-                MlxOpcode::ErrorFrame => {
-                    Err(MlxError::DeviceError(DeviceError::from_number(data[0])))
-                }
-                MlxOpcode::NothingToTransmit => {
-                    info!("Nothing to transmit");
-                    Ok(())
-                }
-                MlxOpcode::ChallengeNOPMISOPacket => {
-                    info!("Challenge NOP MISO packet");
-                    Ok(())
-                }
-                MlxOpcode::NotAnOpcode => Err(MlxError::DeviceError(
-                    DeviceError::InvalidResponseOpcode(frame.opcode as u8),
-                )),
-                _ => Err(MlxError::FormatError),
-            },
-        }
     }
 
     pub(crate) fn read_memory<D: SpiDevice>(

@@ -4,7 +4,7 @@ use rp2040_hal::{
     Spi,
 };
 
-use crate::negicon_event::NegiconEvent;
+
 
 pub(crate) struct SPIUpstream<D, P>
 where
@@ -23,8 +23,8 @@ where
         Self { spi }
     }
 
-    pub(crate) fn transmit_event(&mut self, event: &NegiconEvent) -> Result<(), &'static str> {
-        match self.spi.transfer(&mut event.serialize()) {
+    pub(crate) fn transmit_event(&mut self, event: &mut [u8; 8]) -> Result<(), &'static str> {
+        match self.spi.transfer(event) {
             Ok(_) => Ok(()),
             Err(_) => Err("SPI Upstream Error"),
         }
